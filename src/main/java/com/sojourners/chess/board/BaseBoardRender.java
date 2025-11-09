@@ -4,8 +4,14 @@ import com.sojourners.chess.util.MathUtils;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.StrokeLineCap;
+import javafx.scene.shape.StrokeLineJoin;
 import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
 import javafx.scene.transform.Rotate;
+
+import java.util.ArrayList;
+import java.util.List;
 
 
 public abstract class BaseBoardRender implements BoardRender {
@@ -21,8 +27,8 @@ public abstract class BaseBoardRender implements BoardRender {
         this.gc = canvas.getGraphicsContext2D();
     }
 
-    public void paint(ChessBoard.BoardSize boardSize, char[][] board, ChessBoard.Step prevStep, ChessBoard.Point remark,
-                      boolean stepTip, ChessBoard.Step tipFirst, ChessBoard.Step tipSecond, boolean isReverse, boolean showNumber) {
+    void paint(ChessBoard.BoardSize boardSize, char[][] board, ChessBoard.Step prevStep, ChessBoard.Point remark,
+               boolean stepTip, List<ChessBoard.Step> pvSteps, boolean isReverse, boolean showNumber){
         int padding = getPadding(boardSize);
         int piece = getPieceSize(boardSize);
         int pos = padding + piece / 2;
@@ -51,13 +57,40 @@ public abstract class BaseBoardRender implements BoardRender {
         }
         // 绘制棋子
         drawPieces(pos, piece, board, isReverse, boardSize);
-        // 绘制棋步提示
-        if (stepTip && tipFirst != null) {
-            drawStepTips(pos, piece, tipFirst.first.x, tipFirst.first.y, tipFirst.second.x, tipFirst.second.y, isReverse, true);
+
+        // 绘制棋步提示 - 修改部分
+        if (stepTip && pvSteps != null && !pvSteps.isEmpty()) {
+            final int MAX_PV_DISPLAY = 5; // 最多显示5个PV
+
+            System.out.println("PV Steps count: " + pvSteps.size());
+            for (int i = 0; i < pvSteps.size(); i++) {
+                ChessBoard.Step step = pvSteps.get(i);
+                System.out.println("PV" + (i+1) + ": (" + step.first.x + "," + step.first.y + ") -> (" + step.second.x + "," + step.second.y + ")");
+            }
+
+            for (int pvIndex = 0; pvIndex < Math.min(pvSteps.size(), MAX_PV_DISPLAY); pvIndex++) {
+                ChessBoard.Step step = pvSteps.get(pvIndex);
+                if (step != null) {
+                    // 只有主PV(索引0)的第一步设置为isFirst=true
+                    boolean isFirst = (pvIndex == 0);
+                    drawStepTips(pos, piece, step.first.x, step.first.y,
+                            step.second.x, step.second.y,
+                            isReverse, pvIndex, isFirst);
+                }
+            }
         }
-        if (stepTip && tipSecond != null) {
-            drawStepTips(pos, piece, tipSecond.first.x, tipSecond.first.y, tipSecond.second.x, tipSecond.second.y, isReverse, false);
-        }
+    }
+
+    public void paint(ChessBoard.BoardSize boardSize, char[][] board, ChessBoard.Step prevStep, ChessBoard.Point remark,
+                      boolean stepTip, ChessBoard.Step tipFirst, ChessBoard.Step tipSecond, boolean isReverse, boolean showNumber) {
+
+        // 转换为新的多PV格式
+        List<ChessBoard.Step> pvSteps = new ArrayList<>();
+        if (tipFirst != null) pvSteps.add(tipFirst);
+        if (tipSecond != null) pvSteps.add(tipSecond);
+
+        // 调用新方法
+        paint(boardSize, board, prevStep, remark, stepTip, pvSteps, isReverse, showNumber);
     }
 
     // paint edit chess board demo piece
@@ -103,33 +136,119 @@ public abstract class BaseBoardRender implements BoardRender {
         return getPieceSize(style) / 2.5d;
     }
 
-    @Override
-    public void drawStepTips(int pos, int piece, int x1, int y1, int x2, int y2, boolean isReverse, boolean isFirst) {
-        x1 = pos + piece * getReverseX(x1, isReverse);
-        y1 = pos + piece * getReverseY(y1, isReverse);
-        x2 = pos + piece * getReverseX(x2, isReverse);
-        y2 = pos + piece * getReverseY(y2, isReverse);
+    public void drawStepTips(int pos, int piece, int x1, int y1, int x2, int y2, boolean isReverse, int pvIndex, boolean isFirst) {
+        final int startX = pos + piece * getReverseX(x1, isReverse);
+        final int startY = pos + piece * getReverseY(y1, isReverse);
+        final int endX = pos + piece * getReverseX(x2, isReverse);
+        final int endY = pos + piece * getReverseY(y2, isReverse);
 
         gc.save();
 
-        double angle = MathUtils.calculateAngle(x1, y1, x2, y2);
-        Rotate r = new Rotate(angle, x1, y1);
-        gc.setTransform(r.getMxx(), r.getMyx(), r.getMxy(), r.getMyy(), r.getTx(), r.getTy());
+        try {
+            // 计算角度
+            double angle = MathUtils.calculateAngle(startX, startY, endX, endY);
+            Rotate r = new Rotate(angle, startX, startY);
+            gc.setTransform(r.getMxx(), r.getMyx(), r.getMxy(), r.getMyy(), r.getTx(), r.getTy());
 
-        gc.setGlobalAlpha(0.5);
-        Color color = isFirst ? Color.PURPLE : Color.GREEN;
-        gc.setFill(color);
+            // 颜色配置
+            Color[] pvColors = {
+                    Color.RED,              // PV0 (主)
+                    Color.BLUE,             // PV1
+                    Color.GREEN,            // PV2
+                    Color.ORANGE,           // PV3
+                    Color.PURPLE            // PV4
+            };
 
-        int len = (int) MathUtils.calculateDistance(x1, y1, x2, y2);
-        x2 = x1 - len;
+            // 调整参数：增加透明度，加粗PV2和PV3
+            double[] alphaValues = {1.0, 0.9, 0.85, 0.8, 0.7}; // 增加透明度
+            double[] lineWidths = {10.0, 7.0, 6.0, 5.0, 3.0}; // 加粗PV2和PV3
 
-        x1 -= piece / 4;
-        double offY = piece / 12.5, offX = piece / 4.5, h = piece / 6.5;
-        gc.fillPolygon(new double[]{x1, x2 + offX, x2 + offX + h / 2, x2, x2 + offX + h / 2, x2 + offX, x1},
-                new double[]{y1 - offY, y1 - offY, y1 - offY - h, y1, y1 + offY + h, y1 + offY, y1 + offY},
-                7);
+            Color color = pvColors[Math.min(pvIndex, pvColors.length - 1)];
+            double alpha = alphaValues[Math.min(pvIndex, alphaValues.length - 1)];
+            double lineWidth = lineWidths[Math.min(pvIndex, lineWidths.length - 1)];
 
-        gc.restore();
+            // 主PV特殊强化
+            if (isFirst && pvIndex == 0) {
+                color = Color.RED;
+                alpha = 1.0;
+                lineWidth = 12.0;
+            }
+
+            gc.setStroke(color);
+            gc.setLineWidth(lineWidth);
+            gc.setGlobalAlpha(alpha);
+            gc.setFill(color);
+
+            // 调整箭头参数 - 显著缩短末端长度
+            final double ARROW_HEAD_HEIGHT_RATIO = 1.0 / 3.0;
+            final double ARROW_OFFSET_X_RATIO = 1.0 / 5.0;    // 减小偏移
+            final double ARROW_OFFSET_Y_RATIO = 1.0 / 10.0;   // 减小偏移
+            final double ARROW_BASE_OFFSET_RATIO = 1.0 / 4.0; // 显著缩短末端长度
+
+            double offY = piece * ARROW_OFFSET_Y_RATIO;
+            double offX = piece * ARROW_OFFSET_X_RATIO;
+            double arrowHeadHeight = piece * ARROW_HEAD_HEIGHT_RATIO;
+
+            // PV间距
+            final double PV_SPACING_RATIO = 0.7;
+            offY += pvIndex * piece * PV_SPACING_RATIO * Math.signum(offY);
+
+            double arrowBaseX = startX - piece * ARROW_BASE_OFFSET_RATIO;
+            double arrowLength = MathUtils.calculateDistance(startX, startY, endX, endY);
+            double arrowTipX = arrowBaseX - arrowLength;
+
+            // 绘制箭杆
+            gc.setLineCap(StrokeLineCap.ROUND);
+            gc.setLineJoin(StrokeLineJoin.ROUND);
+
+            gc.beginPath();
+            gc.moveTo(arrowBaseX, startY);
+            gc.lineTo(arrowTipX + offX, startY);
+            gc.stroke();
+
+            // 绘制箭头
+            double arrowWidth = arrowHeadHeight * (1.0 - pvIndex * 0.1); // 微调箭头大小递减
+            if (isFirst && pvIndex == 0) {
+                arrowWidth = arrowHeadHeight * 1.2;
+            }
+
+            gc.beginPath();
+            gc.moveTo(arrowTipX + offX, startY);
+            gc.lineTo(arrowTipX + offX + arrowHeadHeight, startY - arrowWidth / 2);
+            gc.lineTo(arrowTipX + offX + arrowHeadHeight, startY + arrowWidth / 2);
+            gc.closePath();
+            gc.fill();
+
+            // PV标签显示
+            if (pvIndex < 5) {
+                double fontSize = piece / 3.2; // 统一字体大小
+                if (isFirst && pvIndex == 0) {
+                    fontSize = piece / 2.8; // 主PV稍大
+                }
+
+                gc.setFill(Color.WHITE);
+                gc.setStroke(Color.BLACK);
+                gc.setLineWidth(1.5);
+                gc.setFont(Font.font("Arial", FontWeight.BOLD, fontSize));
+
+                String label = "PV" + (pvIndex + 1);
+                double textX = arrowBaseX - piece / 2.5; // 调整标签位置
+                double textY = startY - arrowHeadHeight - 8;
+
+                // 标签背景
+                Color bgColor = pvIndex == 0 ? Color.rgb(200, 0, 0, 0.8) :
+                        pvIndex == 1 ? Color.rgb(0, 0, 150, 0.8) :
+                                pvIndex == 2 ? Color.rgb(0, 100, 0, 0.8) : Color.rgb(0, 0, 0, 0.7);
+                gc.setFill(bgColor);
+                gc.fillRoundRect(textX - 3, textY - 12, piece / 2.2, 16, 5, 5);
+
+                gc.setFill(Color.WHITE);
+                gc.fillText(label, textX, textY);
+            }
+
+        } finally {
+            gc.restore();
+        }
     }
 
     int getReverseY(int y, boolean isReverse) {

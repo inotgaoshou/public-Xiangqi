@@ -1325,6 +1325,29 @@ public class Controller implements EngineCallBack, LinkerCallBack {
     @Override
     public void showMultiplePv(List<String> pvMoves) {
         Platform.runLater(() -> {
+            // 清除旧的提示
+            board.setTip(null); // 仅调用setTip(null)，不是setTip(null, null)
+            if (pvMoves == null || pvMoves.isEmpty()) return;
+
+            // 将每个PV的走法转换为ChessBoard.Step
+            List<ChessBoard.Step> pvSteps = new ArrayList<>();
+            for (String move : pvMoves) {
+                if (move.length() != 4) continue;
+                char fromX = move.charAt(0);
+                char fromY = move.charAt(1);
+                char toX = move.charAt(2);
+                char toY = move.charAt(3);
+                int x1 = fromX - 'a';
+                int y1 = 9 - Character.getNumericValue(fromY);
+                int x2 = toX - 'a';
+                int y2 = 9 - Character.getNumericValue(toY);
+                pvSteps.add(new ChessBoard.Step(x1, y1, x2, y2));
+            }
+
+            // 设置多PV提示
+            board.setTip(pvSteps);
+
+            // 同时更新状态栏信息
             StringBuilder sb = new StringBuilder();
             sb.append("候选走法: ");
             for (int i = 0; i < pvMoves.size(); i++) {
@@ -1486,5 +1509,15 @@ public class Controller implements EngineCallBack, LinkerCallBack {
 
             System.out.println("测试数据添加完成，应该显示2个PV");
         });
+    }
+
+    private Color getColorForPV(int index) {
+        switch (index) {
+            case 0: return Color.PURPLE;   // PV1
+            case 1: return Color.GREEN;    // PV2
+            case 2: return Color.BLUE;     // PV3
+            case 3: return Color.ORANGE;   // PV4
+            default: return Color.GRAY;
+        }
     }
 }

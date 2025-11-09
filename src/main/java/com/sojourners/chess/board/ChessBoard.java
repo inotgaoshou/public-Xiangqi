@@ -5,7 +5,9 @@ import com.sojourners.chess.util.PathUtils;
 import com.sojourners.chess.util.StringUtils;
 import com.sojourners.chess.util.XiangqiUtils;
 import javafx.scene.canvas.Canvas;
+import javafx.scene.paint.Color;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +34,45 @@ public class ChessBoard {
     private static SoundPlayer sound;
 
     public static Map<Character, String> map = new HashMap<>(32);
+
+    // 在 ChessBoard 类中添加字段
+    private List<List<Step>> multiPVList = new ArrayList<>();
+
+    // 添加成员变量
+    private List<ChessBoard.Step> tipSteps;
+
+    // 添加setTip方法
+    public void setTip(List<ChessBoard.Step> pvSteps) {
+        this.tipSteps = pvSteps;
+        repaint();
+    }
+
+    // 修改repaint方法
+    public void repaint() {
+        if (boardRender != null) {
+            boardRender.paint(boardSize, board, prevStep, remark, stepTip, tipSteps, isReverse, showNumber);
+        }
+    }
+
+    // 添加设置多PV的方法
+    public void setMultiPV(List<List<String>> pvStringList) {
+        this.multiPVList.clear();
+        for (List<String> pv : pvStringList) {
+            List<Step> steps = new ArrayList<>();
+            for (String move : pv) {
+                steps.add(stepForBoard(move));
+            }
+            this.multiPVList.add(steps);
+        }
+        if (stepTip) {
+            paint();
+        }
+    }
+
+    // 添加获取多PV的方法
+    public List<List<Step>> getMultiPVList() {
+        return multiPVList;
+    }
 
     static {
         map.put('r', "车");
@@ -99,9 +140,16 @@ public class ChessBoard {
             this.y = y;
         }
     }
-    public class Step {
-        Point first;
-        Point second;
+    public static class Step {
+        public Point first;
+        public Point second;
+
+        public Step(int x1, int y1, int x2, int y2) {
+            this.first = new Point(x1, y1);
+            this.second = new Point(x2, y2);
+        }
+
+        // 新增构造函数 - 解决问题的关键
         public Step(Point first, Point second) {
             this.first = first;
             this.second = second;
