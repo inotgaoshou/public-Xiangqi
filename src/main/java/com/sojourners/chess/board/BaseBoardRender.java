@@ -137,120 +137,84 @@ public abstract class BaseBoardRender implements BoardRender {
     }
 
     public void drawStepTips(int pos, int piece, int x1, int y1, int x2, int y2, boolean isReverse, int pvIndex, boolean isFirst) {
-        final int startX = pos + piece * getReverseX(x1, isReverse);
-        final int startY = pos + piece * getReverseY(y1, isReverse);
-        final int endX = pos + piece * getReverseX(x2, isReverse);
-        final int endY = pos + piece * getReverseY(y2, isReverse);
+        x1 = pos + piece * getReverseX(x1, isReverse);
+        y1 = pos + piece * getReverseY(y1, isReverse);
+        x2 = pos + piece * getReverseX(x2, isReverse);
+        y2 = pos + piece * getReverseY(y2, isReverse);
 
         gc.save();
 
         try {
-            // 计算角度
-            double angle = MathUtils.calculateAngle(startX, startY, endX, endY);
-            Rotate r = new Rotate(angle, startX, startY);
+            double angle = MathUtils.calculateAngle(x1, y1, x2, y2);
+            Rotate r = new Rotate(angle, x1, y1);
             gc.setTransform(r.getMxx(), r.getMyx(), r.getMxy(), r.getMyy(), r.getTx(), r.getTy());
 
-            // 颜色配置
+            // 使用更鲜艳的颜色
             Color[] pvColors = {
-                    Color.RED,              // PV0 (主)
-                    Color.BLUE,             // PV1
-                    Color.GREEN,            // PV2
-                    Color.ORANGE,           // PV3
-                    Color.PURPLE            // PV4
+                    Color.rgb(255, 50, 50, 0.9),    // PV0 - 鲜红色
+                    Color.rgb(0, 100, 255, 0.9),    // PV1 - 亮蓝色
+                    Color.rgb(0, 200, 0, 0.9),      // PV2 - 亮绿色
+                    Color.rgb(255, 165, 0, 0.9),    // PV3 - 橙色
+                    Color.rgb(180, 0, 220, 0.9)     // PV4 - 亮紫色
             };
 
-            // 调整参数：增加透明度，加粗PV2和PV3
-            double[] alphaValues = {1.0, 0.9, 0.85, 0.8, 0.7}; // 增加透明度
-            double[] lineWidths = {10.0, 7.0, 6.0, 5.0, 3.0}; // 加粗PV2和PV3
+            // 增加线宽
+            double[] lineWidths = {5.0, 4.0, 3.5, 3.0, 2.5};
 
             Color color = pvColors[Math.min(pvIndex, pvColors.length - 1)];
-            double alpha = alphaValues[Math.min(pvIndex, alphaValues.length - 1)];
             double lineWidth = lineWidths[Math.min(pvIndex, lineWidths.length - 1)];
 
-            // 主PV特殊强化
-            if (isFirst && pvIndex == 0) {
-                color = Color.RED;
-                alpha = 1.0;
-                lineWidth = 12.0;
-            }
-
+            gc.setFill(color);
             gc.setStroke(color);
             gc.setLineWidth(lineWidth);
-            gc.setGlobalAlpha(alpha);
-            gc.setFill(color);
 
-            // 调整箭头参数 - 显著缩短末端长度
-            final double ARROW_HEAD_HEIGHT_RATIO = 1.0 / 3.0;
-            final double ARROW_OFFSET_X_RATIO = 1.0 / 5.0;    // 减小偏移
-            final double ARROW_OFFSET_Y_RATIO = 1.0 / 10.0;   // 减小偏移
-            final double ARROW_BASE_OFFSET_RATIO = 1.0 / 4.0; // 显著缩短末端长度
+            int len = (int) MathUtils.calculateDistance(x1, y1, x2, y2);
+            x2 = x1 - len;
 
-            double offY = piece * ARROW_OFFSET_Y_RATIO;
-            double offX = piece * ARROW_OFFSET_X_RATIO;
-            double arrowHeadHeight = piece * ARROW_HEAD_HEIGHT_RATIO;
+            // 基本参数
+            double offY = piece / 10.0;  // 增大箭头
+            double offX = piece / 4.0;
+            double h = piece / 5.0;      // 增大箭头高度
 
-            // PV间距
-            final double PV_SPACING_RATIO = 0.7;
-            offY += pvIndex * piece * PV_SPACING_RATIO * Math.signum(offY);
+            // 简单的垂直偏移
+            double pvOffsetY = pvIndex * piece / 6.0;  // 增大间距
+            double currentY1 = y1 + pvOffsetY;
 
-            double arrowBaseX = startX - piece * ARROW_BASE_OFFSET_RATIO;
-            double arrowLength = MathUtils.calculateDistance(startX, startY, endX, endY);
-            double arrowTipX = arrowBaseX - arrowLength;
+            // 绘制箭头多边形
+            gc.fillPolygon(new double[]{x1, x2 + offX, x2 + offX + h / 2, x2, x2 + offX + h / 2, x2 + offX, x1},
+                    new double[]{currentY1 - offY, currentY1 - offY, currentY1 - offY - h, currentY1, currentY1 + offY + h, currentY1 + offY, currentY1 + offY},
+                    7);
 
-            // 绘制箭杆
-            gc.setLineCap(StrokeLineCap.ROUND);
-            gc.setLineJoin(StrokeLineJoin.ROUND);
-
-            gc.beginPath();
-            gc.moveTo(arrowBaseX, startY);
-            gc.lineTo(arrowTipX + offX, startY);
-            gc.stroke();
-
-            // 绘制箭头
-            double arrowWidth = arrowHeadHeight * (1.0 - pvIndex * 0.1); // 微调箭头大小递减
-            if (isFirst && pvIndex == 0) {
-                arrowWidth = arrowHeadHeight * 1.2;
-            }
-
-            gc.beginPath();
-            gc.moveTo(arrowTipX + offX, startY);
-            gc.lineTo(arrowTipX + offX + arrowHeadHeight, startY - arrowWidth / 2);
-            gc.lineTo(arrowTipX + offX + arrowHeadHeight, startY + arrowWidth / 2);
-            gc.closePath();
-            gc.fill();
-
-            // PV标签显示
+            // 方案：使用大号彩色标签框
             if (pvIndex < 5) {
-                double fontSize = piece / 3.2; // 统一字体大小
-                if (isFirst && pvIndex == 0) {
-                    fontSize = piece / 2.8; // 主PV稍大
-                }
+                double boxWidth = piece / 3.0;    // 增大标签框
+                double boxHeight = piece / 4.0;
+                double boxX = x1 - piece / 3.0;
+                double boxY = currentY1 - boxHeight / 2;
 
+                // 绘制背景框 - 使用对比色
+                gc.setFill(Color.rgb(255, 255, 255, 0.9));  // 白色背景
+                gc.fillRect(boxX - 1, boxY - 1, boxWidth + 2, boxHeight + 2);
+
+                gc.setFill(color);
+                gc.fillRect(boxX, boxY, boxWidth, boxHeight);
+
+                // 绘制黑色粗体数字
                 gc.setFill(Color.WHITE);
-                gc.setStroke(Color.BLACK);
-                gc.setLineWidth(1.5);
-                gc.setFont(Font.font("Arial", FontWeight.BOLD, fontSize));
+                gc.setFont(Font.font("Arial", FontWeight.BLACK, piece / 4.0));  // 大号字体
+                String number = String.valueOf(pvIndex + 1);
 
-                String label = "PV" + (pvIndex + 1);
-                double textX = arrowBaseX - piece / 2.5; // 调整标签位置
-                double textY = startY - arrowHeadHeight - 8;
+                // 计算文字居中位置
+                double textX = boxX + boxWidth / 2 - (number.length() * piece / 12.0);
+                double textY = boxY + boxHeight * 0.7;
 
-                // 标签背景
-                Color bgColor = pvIndex == 0 ? Color.rgb(200, 0, 0, 0.8) :
-                        pvIndex == 1 ? Color.rgb(0, 0, 150, 0.8) :
-                                pvIndex == 2 ? Color.rgb(0, 100, 0, 0.8) : Color.rgb(0, 0, 0, 0.7);
-                gc.setFill(bgColor);
-                gc.fillRoundRect(textX - 3, textY - 12, piece / 2.2, 16, 5, 5);
-
-                gc.setFill(Color.WHITE);
-                gc.fillText(label, textX, textY);
+                gc.fillText(number, textX, textY);
             }
 
         } finally {
             gc.restore();
         }
     }
-
     int getReverseY(int y, boolean isReverse) {
         return isReverse ? (9 - y) : y;
     }
