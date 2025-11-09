@@ -752,14 +752,6 @@ public class Controller implements EngineCallBack, LinkerCallBack {
         // canvas drag listener
         initCanvasDragListener();
 
-        // 添加清除标记按钮
-        Button clearMarkButton = new Button("清除标记");
-        clearMarkButton.setOnAction(e -> {
-            board.clearMarkedMoves();
-            // 可选：清除列表中的标记，但通常不需要
-        });
-        statusToolBar.getItems().add(clearMarkButton);
-
         useOpenBook.setValue(prop.getBookSwitch());
 
         // 测试多PV显示（测试完成后注释掉）
@@ -1255,13 +1247,11 @@ public class Controller implements EngineCallBack, LinkerCallBack {
         }
     }
 
+    // 更新思考列表显示
     private void updateThinkListView() {
-        System.out.println("更新思考列表，当前多PV映射大小: " + multiPvMap.size());
+        System.out.println("更新思考列表，当前多PV映射大小: " + multiPvMap.size()); // 调试输出
 
         listView.getItems().clear();
-
-        // 清除之前的标记
-        board.clearMarkedMoves();
 
         // 按PV索引排序显示
         List<Integer> sortedPvIndices = new ArrayList<>(multiPvMap.keySet());
@@ -1271,28 +1261,7 @@ public class Controller implements EngineCallBack, LinkerCallBack {
             ThinkData td = multiPvMap.get(pvIndex);
             if (td != null) {
                 listView.getItems().add(td);
-                System.out.println("添加到列表: PV" + pvIndex + " - " + td.getTitle());
-
-                // 在棋盘上标记走法
-                if (td.getDetail() != null && !td.getDetail().isEmpty()) {
-                    String move = td.getDetail().get(0);
-                    ChessBoard.Step step = board.stepForBoard(move);
-                    if (step != null) {
-                        // 使用不同的颜色标记不同的PV
-                        Color color;
-                        if (pvIndex == 1) {
-                            color = Color.DARKBLUE; // 主PV用蓝色
-                        } else if (pvIndex == 2) {
-                            color = Color.RED; // 第二PV用红色
-                        } else if (pvIndex == 3) {
-                            color = Color.GREEN; // 第三PV用绿色
-                        } else {
-                            color = Color.ORANGE; // 其他PV用橙色
-                        }
-                        board.markMove(step.getFirst().getX(), step.getFirst().getY(),
-                                step.getSecond().getX(), step.getSecond().getY(), color);
-                    }
-                }
+                System.out.println("添加到列表: PV" + pvIndex + " - " + td.getTitle()); // 调试输出
             }
         }
 
@@ -1301,9 +1270,10 @@ public class Controller implements EngineCallBack, LinkerCallBack {
             listView.getItems().remove(listView.getItems().size() - 1);
         }
 
-        System.out.println("列表更新完成，当前列表项数: " + listView.getItems().size());
+        System.out.println("列表更新完成，当前列表项数: " + listView.getItems().size()); // 调试输出
     }
 
+    // 更新状态栏信息
     private void updateStatusBar(ThinkData latestTd) {
         if (prop.isLinkShowInfo()) {
             StringBuilder statusText = new StringBuilder();
@@ -1329,13 +1299,14 @@ public class Controller implements EngineCallBack, LinkerCallBack {
                 statusText.append(latestTd.getTitle()).append(" | ").append(latestTd.getBody());
             }
 
-            // 为状态栏添加颜色指示
             infoShowLabel.setText(statusText.toString());
             infoShowLabel.setTextFill(latestTd.getScore() >= 0 ? Color.BLUE : Color.RED);
 
             timeShowLabel.setText(prop.getAnalysisModel() == Engine.AnalysisModel.FIXED_TIME ?
                     "固定时间" + prop.getAnalysisValue() / 1000d + "s" :
                     "固定深度" + prop.getAnalysisValue() + "层");
+
+            System.out.println("状态栏更新: " + statusText.toString()); // 调试输出
         }
     }
 
