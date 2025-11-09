@@ -27,6 +27,17 @@ public class ThinkData {
 
     private Boolean isValid;
 
+    private Integer pvIndex; // PV索引，用于多PV模式
+
+    public Integer getPvIndex() {
+        return pvIndex;
+    }
+
+    public void setPvIndex(Integer pvIndex) {
+        System.out.println("设置PV索引: " + this.pvIndex); // 调试输出
+        this.pvIndex = pvIndex;
+    }
+
     public ThinkData() {
 
     }
@@ -47,6 +58,17 @@ public class ThinkData {
         if (redGo && isReverse || !redGo && !isReverse) {
             score = -score;
         }
+
+        // 在标题中包含PV索引信息
+        // 在标题中包含PV索引信息
+        if (pvIndex != null && pvIndex > 1) {
+            title = "PV" + pvIndex + " - " + title;
+            System.out.println("生成PV" + pvIndex + "标题: " + title); // 调试输出
+        } else {
+            title = "PV1 - " + title;
+            System.out.println("生成PV1标题: " + title); // 调试输出
+        }
+
         sb.append(score).append(f ? "步  " : "  ");
         sb.append("NPS: ").append(nps / 1000).append("K  ");
         sb.append("时间: ").append(String.format("%.1fs", time / 1000D));
@@ -55,6 +77,7 @@ public class ThinkData {
         body = board.translate(detail);
         // 是否有效（处理分析模式下null数据）
         isValid = !body.contains("null");
+
     }
 
     public Boolean getValid() {

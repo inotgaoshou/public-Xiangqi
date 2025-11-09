@@ -22,6 +22,38 @@ public class EngineConfig implements Serializable {
         this.options = options;
     }
 
+    // 新增：设置MultiPV选项
+    public void setMultiPV(int value) {
+        if (options == null) {
+            options = new LinkedHashMap<>();
+        }
+        options.put("MultiPV", String.valueOf(value));
+    }
+
+    // 新增：获取MultiPV值
+    public int getMultiPV() {
+        if (options != null && options.containsKey("MultiPV")) {
+            try {
+                return Integer.parseInt(options.get("MultiPV"));
+            } catch (NumberFormatException e) {
+                return 1;
+            }
+        }
+        return 1;
+    }
+
+    // 新增：检查是否支持MultiPV
+    public boolean isMultiPVSupported() {
+        return options != null && options.containsKey("MultiPV");
+    }
+
+    // 新增：移除MultiPV设置
+    public void removeMultiPV() {
+        if (options != null) {
+            options.remove("MultiPV");
+        }
+    }
+
     public LinkedHashMap<String, String> getOptions() {
         return options;
     }

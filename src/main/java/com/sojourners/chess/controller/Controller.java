@@ -51,8 +51,7 @@ import java.awt.image.RenderedImage;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.Date;
+import java.util.*;
 import java.util.List;
 
 public class Controller implements EngineCallBack, LinkerCallBack {
@@ -184,6 +183,9 @@ public class Controller implements EngineCallBack, LinkerCallBack {
      * 正在思考（用于连线判断）
      */
     private volatile boolean isThinking;
+
+    // 存储多PV信息
+    private Map<Integer, ThinkData> multiPvMap = new HashMap<>();
 
     @FXML
     public void newButtonClick(ActionEvent event) {
@@ -375,6 +377,10 @@ public class Controller implements EngineCallBack, LinkerCallBack {
     }
 
     private void engineGo() {
+        // 清空多PV缓存
+        multiPvMap.clear();
+        listView.getItems().clear();
+
         if (engine == null) {
             DialogUtils.showWarningDialog("提示", "引擎未加载");
             return;
@@ -685,35 +691,45 @@ public class Controller implements EngineCallBack, LinkerCallBack {
         // 读取配置
         prop = Properties.getInstance();
         // 思考细节listView
-        listView.setCellFactory(new Callback() {
+        listView.setCellFactory(new Callback<ListView<ThinkData>, ListCell<ThinkData>>() {
             @Override
-            public Object call(Object param) {
-                ListCell<ThinkData> cell = new ListCell<ThinkData>() {
+            public ListCell<ThinkData> call(ListView<ThinkData> param) {
+                return new ListCell<ThinkData>() {
                     @Override
-                    protected void updateItem(ThinkData item, boolean bln) {
-                        super.updateItem(item, bln);
-                        if (!bln) {
+                    protected void updateItem(ThinkData item, boolean empty) {
+                        super.updateItem(item, empty);
+                        if (empty || item == null) {
+                            setGraphic(null);
+                            setText(null);
+                        } else {
                             VBox box = new VBox();
+                            box.setSpacing(2);
 
                             Label title = new Label();
-                            title.setText(item.getTitle());
-                            title.setTextFill(item.getScore() >= 0 ? Color.BLUE : Color.RED);
+                            // 根据PV索引使用不同颜色
+                            Integer pvIndex = item.getPvIndex() != null ? item.getPvIndex() : 1;
+                            if (pvIndex == 1) {
+                                title.setText("★ " + item.getTitle());
+                                title.setTextFill(Color.DARKBLUE);
+                                title.setStyle("-fx-font-weight: bold;");
+                            } else {
+                                title.setText("PV" + pvIndex + " - " + item.getTitle());
+                                title.setTextFill(item.getScore() >= 0 ? Color.BLUE : Color.RED);
+                            }
                             box.getChildren().add(title);
 
                             Label body = new Label();
                             body.setText(item.getBody());
-                            body.setTextFill(Color.BLACK);
+                            body.setTextFill(Color.DARKGRAY);
                             body.setWrapText(true);
-                            body.setMaxWidth(listView.getWidth() / 1.124);//bind(listView.widthProperty().divide(1.124));
+                            body.setMaxWidth(listView.getWidth() / 1.124);
                             box.getChildren().add(body);
 
                             setGraphic(box);
                         }
                     }
                 };
-                return cell;
             }
-
         });
         // 按钮
         setButtonTips();
@@ -736,7 +752,18 @@ public class Controller implements EngineCallBack, LinkerCallBack {
         // canvas drag listener
         initCanvasDragListener();
 
+        // 添加清除标记按钮
+        Button clearMarkButton = new Button("清除标记");
+        clearMarkButton.setOnAction(e -> {
+            board.clearMarkedMoves();
+            // 可选：清除列表中的标记，但通常不需要
+        });
+        statusToolBar.getItems().add(clearMarkButton);
+
         useOpenBook.setValue(prop.getBookSwitch());
+
+        // 测试多PV显示（测试完成后注释掉）
+//         testMultiPvDisplay();
     }
 
     private void importFromBufferImage(BufferedImage img) {
@@ -956,6 +983,8 @@ public class Controller implements EngineCallBack, LinkerCallBack {
         isReverse.setValue(false);
         // 引擎停止计算
         engineStop();
+        // 清空多PV缓存
+        multiPvMap.clear();
         // 绘制棋盘
         board = new ChessBoard(this.canvas, prop.getBoardSize(), prop.getBoardStyle(), prop.isStepTip(), prop.isStepSound(), prop.isShowNumber(), fenCode);
         // 设置局面
@@ -1128,6 +1157,7 @@ public class Controller implements EngineCallBack, LinkerCallBack {
         });
     }
 
+    // 在引擎设置中检查
     private void loadEngine(String name) {
         try {
             if (StringUtils.isNotEmpty(name)) {
@@ -1137,6 +1167,13 @@ public class Controller implements EngineCallBack, LinkerCallBack {
                             engine.close();
                         }
                         engine = new Engine(ec, this);
+
+                        // 检查多PV设置
+                        if (ec.getMultiPV() > 1) {
+                            System.out.println("加载引擎: " + name + "，多PV数量: " + ec.getMultiPV());
+                        } else {
+                            System.out.println("加载引擎: " + name + "，单PV模式");
+                        }
                         return;
                     }
                 }
@@ -1183,28 +1220,126 @@ public class Controller implements EngineCallBack, LinkerCallBack {
         }
     }
 
+    public void bestMove(List<String[]> pvLines, int selectedPVIndex){
+
+    }
+
     @Override
     public void thinkDetail(ThinkData td) {
+        System.out.println("收到ThinkData - PV索引: " + td.getPvIndex() + ", 分数: " + td.getScore() + ", 着法数量: " +
+                (td.getDetail() != null ? td.getDetail().size() : 0)); // 调试输出
+
         if (redGo && robotRed.getValue() || !redGo && robotBlack.getValue() || robotAnalysis.getValue()) {
             td.generate(redGo, isReverse.getValue(), board);
             if (td.getValid()) {
                 Platform.runLater(() -> {
-                    listView.getItems().add(0, td);
-                    if (listView.getItems().size() > 128) {
-                        listView.getItems().remove(listView.getItems().size() - 1);
-                    }
+                    // 存储多PV信息 - 确保每次都正确更新
+                    Integer pvIndex = td.getPvIndex() != null ? td.getPvIndex() : 1;
 
-                    if (prop.isLinkShowInfo()) {
-                        infoShowLabel.setText(td.getTitle() + " | " + td.getBody());
-                        infoShowLabel.setTextFill(td.getScore() >= 0 ? Color.BLUE : Color.RED);
-                        timeShowLabel.setText(prop.getAnalysisModel() == Engine.AnalysisModel.FIXED_TIME ? "固定时间" + prop.getAnalysisValue() / 1000d + "s" : "固定深度" + prop.getAnalysisValue() + "层");
-                    }
+                    System.out.println("存储PV" + pvIndex + "到映射，当前映射大小: " + multiPvMap.size()); // 调试输出
+                    multiPvMap.put(pvIndex, td);
 
-                    board.setTip(td.getDetail().get(0), td.getDetail().size() > 1 ? td.getDetail().get(1) : null);
+                    // 更新列表显示
+                    updateThinkListView();
+
+                    // 更新状态栏信息
+                    updateStatusBar(td);
+
+                    // 为主PV显示棋盘提示
+                    if (pvIndex == 1 && td.getDetail() != null && !td.getDetail().isEmpty()) {
+                        board.setTip(td.getDetail().get(0),
+                                td.getDetail().size() > 1 ? td.getDetail().get(1) : null);
+                    }
                 });
             }
         }
     }
+
+    private void updateThinkListView() {
+        System.out.println("更新思考列表，当前多PV映射大小: " + multiPvMap.size());
+
+        listView.getItems().clear();
+
+        // 清除之前的标记
+        board.clearMarkedMoves();
+
+        // 按PV索引排序显示
+        List<Integer> sortedPvIndices = new ArrayList<>(multiPvMap.keySet());
+        Collections.sort(sortedPvIndices);
+
+        for (Integer pvIndex : sortedPvIndices) {
+            ThinkData td = multiPvMap.get(pvIndex);
+            if (td != null) {
+                listView.getItems().add(td);
+                System.out.println("添加到列表: PV" + pvIndex + " - " + td.getTitle());
+
+                // 在棋盘上标记走法
+                if (td.getDetail() != null && !td.getDetail().isEmpty()) {
+                    String move = td.getDetail().get(0);
+                    ChessBoard.Step step = board.stepForBoard(move);
+                    if (step != null) {
+                        // 使用不同的颜色标记不同的PV
+                        Color color;
+                        if (pvIndex == 1) {
+                            color = Color.DARKBLUE; // 主PV用蓝色
+                        } else if (pvIndex == 2) {
+                            color = Color.RED; // 第二PV用红色
+                        } else if (pvIndex == 3) {
+                            color = Color.GREEN; // 第三PV用绿色
+                        } else {
+                            color = Color.ORANGE; // 其他PV用橙色
+                        }
+                        board.markMove(step.getFirst().getX(), step.getFirst().getY(),
+                                step.getSecond().getX(), step.getSecond().getY(), color);
+                    }
+                }
+            }
+        }
+
+        // 限制列表大小
+        if (listView.getItems().size() > 128) {
+            listView.getItems().remove(listView.getItems().size() - 1);
+        }
+
+        System.out.println("列表更新完成，当前列表项数: " + listView.getItems().size());
+    }
+
+    private void updateStatusBar(ThinkData latestTd) {
+        if (prop.isLinkShowInfo()) {
+            StringBuilder statusText = new StringBuilder();
+
+            if (multiPvMap.size() > 1) {
+                statusText.append("多PV分析[").append(multiPvMap.size()).append("]: ");
+
+                List<Integer> sortedPvIndices = new ArrayList<>(multiPvMap.keySet());
+                Collections.sort(sortedPvIndices);
+
+                for (Integer pvIndex : sortedPvIndices) {
+                    ThinkData td = multiPvMap.get(pvIndex);
+                    if (td != null && td.getDetail() != null && !td.getDetail().isEmpty()) {
+                        String firstMove = td.getDetail().get(0);
+                        String translated = board.translate(firstMove, false);
+                        statusText.append("PV").append(pvIndex)
+                                .append(":").append(translated)
+                                .append("(").append(td.getScore()).append(") ");
+                    }
+                }
+            } else {
+                // 单PV模式
+                statusText.append(latestTd.getTitle()).append(" | ").append(latestTd.getBody());
+            }
+
+            // 为状态栏添加颜色指示
+            infoShowLabel.setText(statusText.toString());
+            infoShowLabel.setTextFill(latestTd.getScore() >= 0 ? Color.BLUE : Color.RED);
+
+            timeShowLabel.setText(prop.getAnalysisModel() == Engine.AnalysisModel.FIXED_TIME ?
+                    "固定时间" + prop.getAnalysisValue() / 1000d + "s" :
+                    "固定深度" + prop.getAnalysisValue() + "层");
+        }
+    }
+
+
 
     @Override
     public void showBookResults(List<BookData> list) {
@@ -1214,6 +1349,20 @@ public class Controller implements EngineCallBack, LinkerCallBack {
             bd.setWord(board.translate(move, false));
             this.bookTable.getItems().add(bd);
         }
+    }
+
+    @Override
+    public void showMultiplePv(List<String> pvMoves) {
+        Platform.runLater(() -> {
+            StringBuilder sb = new StringBuilder();
+            sb.append("候选走法: ");
+            for (int i = 0; i < pvMoves.size(); i++) {
+                String move = pvMoves.get(i);
+                String translated = board.translate(move, false);
+                sb.append("PV").append(i + 1).append(": ").append(translated).append(" ");
+            }
+            infoShowLabel.setText(sb.toString());
+        });
     }
 
     @FXML
@@ -1327,5 +1476,44 @@ public class Controller implements EngineCallBack, LinkerCallBack {
         if (robotRed.getValue() && redGo || robotBlack.getValue() && !redGo || robotAnalysis.getValue()) {
             engineGo();
         }
+    }
+
+    // 测试多PV显示
+    private void testMultiPvDisplay() {
+        Platform.runLater(() -> {
+            // 清空现有数据
+            multiPvMap.clear();
+            listView.getItems().clear();
+
+            // 创建测试数据 - PV1
+            ThinkData td1 = new ThinkData();
+            td1.setPvIndex(1);
+            td1.setScore(25);
+            td1.setDepth(43);
+            td1.setNps(827000L);
+            td1.setTime(526900L);
+            List<String> moves1 = Arrays.asList("h2e2", "h9g7", "h0g2");
+            td1.setDetail(moves1);
+            td1.generate(redGo, isReverse.getValue(), board);
+            multiPvMap.put(1, td1);
+
+            // 创建测试数据 - PV2
+            ThinkData td2 = new ThinkData();
+            td2.setPvIndex(2);
+            td2.setScore(30);
+            td2.setDepth(42);
+            td2.setNps(827000L);
+            td2.setTime(526900L);
+            List<String> moves2 = Arrays.asList("b9c7", "h0g2", "h9g7");
+            td2.setDetail(moves2);
+            td2.generate(redGo, isReverse.getValue(), board);
+            multiPvMap.put(2, td2);
+
+            // 更新显示
+            updateThinkListView();
+            updateStatusBar(td1);
+
+            System.out.println("测试数据添加完成，应该显示2个PV");
+        });
     }
 }

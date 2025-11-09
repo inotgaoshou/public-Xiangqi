@@ -7,6 +7,7 @@ import javafx.util.Duration;
 
 import java.io.File;
 
+
 public class SoundPlayer {
     private MediaPlayer pick;
 
@@ -49,6 +50,14 @@ public class SoundPlayer {
     public void over() {
         over.seek(Duration.ZERO);
         over.play();
+    }
+
+    // 添加资源释放方法
+    public void dispose() {
+        if (pick != null) {
+            pick.stop();
+            pick.dispose();
+        }
     }
 
 }

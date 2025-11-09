@@ -6,7 +6,6 @@ import com.sojourners.chess.model.BookData;
 import com.sojourners.chess.model.EngineConfig;
 import com.sojourners.chess.model.ThinkData;
 import com.sojourners.chess.openbook.OpenBookManager;
-import com.sojourners.chess.util.ExecutorsUtils;
 import com.sojourners.chess.util.PathUtils;
 import com.sojourners.chess.util.StringUtils;
 
@@ -43,6 +42,10 @@ public class Engine {
 
     private Random random;
 
+    private List<List<String>> pvLines = new ArrayList<>(); // 存储多个 pv 线路
+    private int currentPvIndex = 0;
+    private int multiPvCount = 1; // 多PV数量
+
     public enum AnalysisModel {
         FIXED_TIME,
         FIXED_STEPS,
@@ -75,6 +78,18 @@ public class Engine {
         });
 
         cmd(protocol);
+
+        // 设置多PV选项
+        // 设置多PV选项
+        if (ec.getMultiPV() > 1) {
+            this.multiPvCount = ec.getMultiPV();
+            if ("uci".equals(this.protocol)) {
+                cmd("setoption name MultiPV value " + ec.getMultiPV());
+            } else if ("ucci".equals(this.protocol)) {
+                cmd("setoption MultiPV " + ec.getMultiPV());
+            }
+            System.out.println("引擎初始化: 启用多PV模式，数量: " + ec.getMultiPV()); // 调试输出
+        }
 
         for (Map.Entry<String, String> entry : ec.getOptions().entrySet()) {
             if ("uci".equals(this.protocol)) {
@@ -188,63 +203,314 @@ public class Engine {
         }
         cb.bestMove(str[1], str.length == 4 ? str[3] : null);
     }
+//    private void thinkDetail(String msg) {
+//        String[] str = msg.split(" ");
+//        ThinkData td = new ThinkData();
+//        List<String> detail = new ArrayList<>();
+//        td.setDetail(detail);
+//        int flag = 0;
+//        for (int i = 0; i < str.length; i++) {
+//            if (flag != 0) {
+//                if (flag == 6) {
+//                    detail.add(str[i]);
+//                } else {
+//                    if (StringUtils.isDigit(str[i])) {
+//                        if (flag == 1) {
+//                            td.setNps(Long.parseLong(str[i]));
+//
+//                        } else if (flag == 2) {
+//                            td.setTime(Long.parseLong(str[i]));
+//
+//                        } else if (flag == 3) {
+//                            td.setDepth(Integer.parseInt(str[i]));
+//                        } else if (flag == 4) {
+//                            td.setMate(Integer.parseInt(str[i]));
+//
+//                        } else if (flag == 5) {
+//                            td.setScore(Integer.parseInt(str[i]));
+//                        }
+//                        flag = 0;
+//                    } else {
+//                        continue;
+//                    }
+//                }
+//            } else {
+//                if ("depth".equals(str[i])) {
+//                    flag = 3;
+//                } else if ("score".equals(str[i])) {
+//                    if ("mate".equals(str[i + 1])) {
+//                        flag = 4;
+//                    } else {
+//                        flag = 5;
+//                    }
+//                } else if ("mate".equals(str[i])) {
+//                    flag = 4;
+//                } else if ("nps".equals(str[i])) {
+//                    flag = 1;
+//                } else if ("time".equals(str[i])) {
+//                    flag = 2;
+//                } else if ("pv".equals(str[i])) {
+//                    flag = 6;
+//                }
+//            }
+//        }
+//        // 如果有多个 pv，可能被分多行输出，但这里只取第一个
+//        // 但我们希望在收到所有 pv 后，统一处理
+//        // 所以我们不直接调用 cb.thinkDetail(td)，而是缓存
+//        // 但在当前架构下，我们只能按行处理
+//
+//        if (td.getDetail().size() > 0) {
+//            cb.thinkDetail(td);
+//        }
+//    }
+
+    // 修改 thinkDetail 方法来处理多PV
+//    private void thinkDetail(String msg) {
+//        String[] str = msg.split(" ");
+//        ThinkData td = new ThinkData();
+//        List<String> detail = new ArrayList<>();
+//        td.setDetail(detail);
+//
+//        int flag = 0;
+//        int currentPv = 1; // 默认第一个PV
+//
+//        for (int i = 0; i < str.length; i++) {
+//            if (flag != 0) {
+//                if (flag == 6) {
+//                    detail.add(str[i]);
+//                } else if (flag == 7) { // 处理 multipv
+//                    currentPv = Integer.parseInt(str[i]);
+//                    td.setPvIndex(currentPv);
+//                } else {
+//                    if (StringUtils.isDigit(str[i])) {
+//                        if (flag == 1) {
+//                            td.setNps(Long.parseLong(str[i]));
+//                        } else if (flag == 2) {
+//                            td.setTime(Long.parseLong(str[i]));
+//                        } else if (flag == 3) {
+//                            td.setDepth(Integer.parseInt(str[i]));
+//                        } else if (flag == 4) {
+//                            td.setMate(Integer.parseInt(str[i]));
+//                        } else if (flag == 5) {
+//                            td.setScore(Integer.parseInt(str[i]));
+//                        }
+//                        flag = 0;
+//                    } else {
+//                        continue;
+//                    }
+//                }
+//            } else {
+//                switch (str[i]) {
+//                    case "depth":
+//                        flag = 3;
+//                        break;
+//                    case "score":
+//                        flag = ("mate".equals(str[i + 1])) ? 4 : 5;
+//                        break;
+//                    case "mate":
+//                        flag = 4;
+//                        break;
+//                    case "nps":
+//                        flag = 1;
+//                        break;
+//                    case "time":
+//                        flag = 2;
+//                        break;
+//                    case "pv":
+//                        flag = 6;
+//                        break;
+//                    case "multipv":
+//                        flag = 7;
+//                        break;
+//                }
+//            }
+//        }
+//
+//        // 如果有多个PV，收集所有PV信息
+//        if (td.getDetail().size() > 0) {
+//            cb.thinkDetail(td);
+//
+//            // 如果是多PV模式，收集所有候选着法
+//            if (multiPvCount > 1) {
+//                collectMultiplePv(td, currentPv);
+//            }
+//        }
+//    }
+
+    // 在 Engine 类中修复 thinkDetail 方法
     private void thinkDetail(String msg) {
         String[] str = msg.split(" ");
         ThinkData td = new ThinkData();
         List<String> detail = new ArrayList<>();
         td.setDetail(detail);
+
         int flag = 0;
+        int currentPv = 1; // 默认第一个PV
+
         for (int i = 0; i < str.length; i++) {
             if (flag != 0) {
                 if (flag == 6) {
+                    // pv 着法序列
                     detail.add(str[i]);
+                } else if (flag == 7) {
+                    // multipv 索引
+                    try {
+                        currentPv = Integer.parseInt(str[i]);
+                        td.setPvIndex(currentPv);
+                    } catch (NumberFormatException e) {
+                        // 忽略解析错误，保持默认值
+                    }
+                    flag = 0;
                 } else {
-                    if (StringUtils.isDigit(str[i])) {
-                        if (flag == 1) {
-                            td.setNps(Long.parseLong(str[i]));
-
-                        } else if (flag == 2) {
-                            td.setTime(Long.parseLong(str[i]));
-
-                        } else if (flag == 3) {
-                            td.setDepth(Integer.parseInt(str[i]));
-                        } else if (flag == 4) {
-                            td.setMate(Integer.parseInt(str[i]));
-
-                        } else if (flag == 5) {
-                            td.setScore(Integer.parseInt(str[i]));
+                    // 处理其他标志
+                    String token = str[i];
+                    if (isNumeric(token) || (token.startsWith("-") && token.length() > 1 && isNumeric(token.substring(1)))) {
+                        try {
+                            if (flag == 1) {
+                                td.setNps(Long.parseLong(token));
+                            } else if (flag == 2) {
+                                td.setTime(Long.parseLong(token));
+                            } else if (flag == 3) {
+                                td.setDepth(Integer.parseInt(token));
+                            } else if (flag == 4) {
+                                td.setMate(Integer.parseInt(token));
+                            } else if (flag == 5) {
+                                td.setScore(Integer.parseInt(token));
+                            }
+                            flag = 0;
+                        } catch (NumberFormatException e) {
+                            // 忽略解析错误
+                            flag = 0;
                         }
-                        flag = 0;
                     } else {
+                        // 如果当前不是数字，继续寻找
                         continue;
                     }
                 }
             } else {
-                if ("depth".equals(str[i])) {
-                    flag = 3;
-                } else if ("score".equals(str[i])) {
-                    if ("mate".equals(str[i + 1])) {
+                switch (str[i]) {
+                    case "depth":
+                        flag = 3;
+                        break;
+                    case "score":
+                        // 检查下一个token是cp还是mate
+                        if (i + 1 < str.length) {
+                            if ("cp".equals(str[i + 1])) {
+                                flag = 5; // 分数
+                                i++; // 跳过cp
+                            } else if ("mate".equals(str[i + 1])) {
+                                flag = 4; // 杀棋
+                                i++; // 跳过mate
+                            }
+                        }
+                        break;
+                    case "mate":
                         flag = 4;
-                    } else {
-                        flag = 5;
-                    }
-                } else if ("mate".equals(str[i])) {
-                    flag = 4;
-                } else if ("nps".equals(str[i])) {
-                    flag = 1;
-                } else if ("time".equals(str[i])) {
-                    flag = 2;
-                } else if ("pv".equals(str[i])) {
-                    flag = 6;
+                        break;
+                    case "nps":
+                        flag = 1;
+                        break;
+                    case "time":
+                        flag = 2;
+                        break;
+                    case "pv":
+                        flag = 6;
+                        break;
+                    case "multipv":
+                        flag = 7;
+                        break;
                 }
             }
         }
-        if (td.getDetail().size() > 0) {
+
+        // 如果有多个PV，收集所有PV信息
+        if (!detail.isEmpty()) {
             cb.thinkDetail(td);
+
+            // 如果是多PV模式，收集所有候选着法
+            if (multiPvCount > 1) {
+                collectMultiplePv(td, currentPv);
+            }
         }
     }
 
+    // 辅助方法：判断字符串是否为数字
+    private boolean isNumeric(String str) {
+        if (str == null || str.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < str.length(); i++) {
+            if (!Character.isDigit(str.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // 判断是否是info输出的关键字
+    private boolean isInfoKeyword(String token) {
+        return "depth".equals(token) || "seldepth".equals(token) ||
+                "multipv".equals(token) || "score".equals(token) ||
+                "mate".equals(token) || "nodes".equals(token) ||
+                "nps".equals(token) || "hashfull".equals(token) ||
+                "tbhits".equals(token) || "time".equals(token) ||
+                "pv".equals(token) || "currmove".equals(token) ||
+                "currmovenumber".equals(token);
+    }
+
+    // 收集多个PV信息
+    private void collectMultiplePv(ThinkData td, int pvIndex) {
+        if (pvIndex < 1 || pvIndex > multiPvCount) {
+            return;
+        }
+
+        // 确保 pvLines 有足够的空间
+        while (pvLines.size() < pvIndex) {
+            pvLines.add(new ArrayList<>());
+        }
+
+        // 更新当前PV的着法
+        if (td.getDetail() != null && !td.getDetail().isEmpty()) {
+            pvLines.set(pvIndex - 1, new ArrayList<>(td.getDetail()));
+
+            // 如果收集到了所有PV，通知回调
+            if (pvIndex == multiPvCount && isAllPvCollected()) {
+                List<String> allFirstMoves = new ArrayList<>();
+                for (List<String> pvLine : pvLines) {
+                    if (!pvLine.isEmpty()) {
+                        allFirstMoves.add(pvLine.get(0));
+                    }
+                }
+                cb.showMultiplePv(allFirstMoves);
+            }
+        }
+    }
+
+    // 检查是否所有PV都已收集
+    private boolean isAllPvCollected() {
+        if (pvLines.size() < multiPvCount) {
+            return false;
+        }
+        for (int i = 0; i < multiPvCount; i++) {
+            if (pvLines.get(i).isEmpty()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // 清空PV缓存
+    public void clearPvCache() {
+        pvLines.clear();
+        currentPvIndex = 0;
+    }
+
+
     public void analysis(String fenCode, List<String> moves, char[][] board, boolean redGo) {
+
+        stop();
+        clearPvCache(); // 清空PV缓存
+
         Thread.startVirtualThread(() -> {
             if (Properties.getInstance().getBookSwitch()) {
                 long s = System.currentTimeMillis();
